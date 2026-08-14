@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: json-scraper
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: HJP_BROWSER_CONCURRENCY
+        value: 1
+      - key: HJP_BROWSER_IDLE_MS
+        value: 30000

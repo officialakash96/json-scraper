@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>JSON Scraper</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="glow glow-a"></div>
+  <div class="glow glow-b"></div>
+
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="brand" href="#home">
+        <span class="brand-mark">{ }</span>
+        <span class="brand-name">JSON <span class="accent">Scraper</span></span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="#home" data-view="home">Home</a>
+        <a href="#learn" data-view="learn">Learn JSON</a>
+        <a href="#about" data-view="about">About</a>
+      </nav>
+      <button type="button" class="nav-toggle" id="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">≡</button>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="view" id="view-home">
+    <div class="masthead">
+      <div class="badge">JSON Extraction Engine</div>
+      <h1><span class="accent">JSON</span> Scraper</h1>
+      <p class="tagline">
+        Pull <code>application/ld+json</code> and <code>application/json</code> blocks out of any public web page.
+      </p>
+    </div>
+
+    <section class="panel">
+      <form id="scrape-form" autocomplete="off" novalidate>
+        <div class="field">
+          <input type="url" id="url" name="url" placeholder=" " required spellcheck="false" />
+          <label for="url">Target page URL</label>
+          <span class="field-hint">https://example.com/article</span>
+        </div>
+
+        <div class="controls">
+          <div class="field field-select">
+            <select id="mode" name="mode">
+              <option value="auto">Auto — fetch, fall back to browser</option>
+              <option value="static">Static — plain HTTP fetch</option>
+              <option value="browser">Browser — render with Chromium</option>
+            </select>
+            <label for="mode">Mode</label>
+          </div>
+
+          <div class="field field-select">
+            <input type="number" id="waitMs" name="waitMs" placeholder=" " min="0" max="15000" step="500" value="0" />
+            <label for="waitMs">Extra wait (ms)</label>
+          </div>
+
+          <button type="submit" id="submit" class="primary">
+            <span class="btn-label">Parse page</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
+        </div>
+      </form>
+
+      <div class="samples">
+        <span>Try:</span>
+        <button type="button" class="chip" data-url="https://en.wikipedia.org/wiki/JSON">Wikipedia</button>
+        <button type="button" class="chip" data-url="https://www.theverge.com">The Verge</button>
+        <button type="button" class="chip" data-url="https://www.bbc.com/news">BBC News</button>
+      </div>
+    </section>
+
+    <section id="status" class="status" hidden></section>
+
+    <section id="results" class="results" hidden>
+      <div class="stat-row" id="stats"></div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab is-active" data-tab="blocks" role="tab">JSON blocks <span class="count" id="blocks-count">0</span></button>
+        <button class="tab" data-tab="raw" role="tab">Raw response</button>
+      </div>
+
+      <div class="tab-panel is-active" id="panel-blocks"></div>
+      <div class="tab-panel" id="panel-raw">
+        <div class="raw-toolbar">
+          <button type="button" class="ghost" id="copy-raw">Copy JSON</button>
+          <button type="button" class="ghost" id="download-raw">Download</button>
+        </div>
+        <pre class="code" id="raw-json"></pre>
+      </div>
+    </section>
+    </section>
+
+    <section class="view" id="view-learn" hidden>
+      <div class="masthead">
+        <div class="badge">Guide</div>
+        <h1>Learn <span class="accent">JSON</span></h1>
+        <p class="tagline">From syntax basics to how JSON moves through real production stacks — and a Python walkthrough you can run today.</p>
+      </div>
+
+      <nav class="toc" aria-label="Guide contents">
+        <a href="#learn-basics">1. What JSON is</a>
+        <a href="#learn-stack">2. JSON across the stack</a>
+        <a href="#learn-realworld">3. Real-world design</a>
+        <a href="#learn-where">4. Where it's used</a>
+        <a href="#learn-advanced">5. Advanced formats</a>
+        <a href="#learn-python">6. Python walkthrough</a>
+      </nav>
+
+      <article class="panel prose lesson" id="learn-basics">
+        <h2>1. What JSON is</h2>
+        <p>
+          <strong>JSON</strong> (JavaScript Object Notation) is a text format for structured data. It was derived from
+          JavaScript object syntax but is language-independent — every mainstream language can read and write it.
+          A JSON document is a single value: usually an object <code>{ }</code> or an array <code>[ ]</code>.
+        </p>
+
+        <h3>The six data types</h3>
+        <table class="doc-table">
+          <thead><tr><th>Type</th><th>Example</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>string</td><td><code>"Functional QA"</code></td><td>Double quotes only, Unicode, <code>\n</code> escapes</td></tr>
+            <tr><td>number</td><td><code>42</code>, <code>3.14</code>, <code>1e6</code></td><td>No <code>NaN</code>, no <code>Infinity</code>, no leading <code>+</code></td></tr>
+            <tr><td>boolean</td><td><code>true</code>, <code>false</code></td><td>Lowercase only</td></tr>
+            <tr><td>null</td><td><code>null</code></td><td>Explicitly "no value"</td></tr>
+            <tr><td>object</td><td><code>{ "city": "Hyderabad" }</code></td><td>Unordered key/value pairs, keys must be strings</td></tr>
+            <tr><td>array</td><td><code>[1, 2, 3]</code></td><td>Ordered, may mix types</td></tr>
+          </tbody>
+        </table>
+
+        <h3>A complete example</h3>
+        <div class="code-block">
+          <button type="button" class="code-copy" title="Copy snippet">Copy</button>
+          <pre class="code"><code>{
+  "id": 31840000018316618,
+  "title": "Functional QA",
+  "remote": false,
+  "city": "Hyderabad",
+  "salary": null,
+  "skills": ["manual testing", "SQL", "API testing"],
+  "postedAt": "2026-08-04T18:30:00Z",
+  "company": {
+    "name": "Kumaran Systems",
+    "url": "https://careers.kumaran.com"
+  }
+}</code></pre>
+        </div>
+
+        <h3>Rules that trip people up</h3>
+        <ul>
+          <li>No trailing commas, no comments, no single quotes.</li>
+          <li>Keys are always quoted strings — <code>{ city: "x" }</code> is JavaScript, not JSON.</li>
+          <li>Dates are not a type. Teams encode them as ISO&nbsp;8601 strings (<code>"2026-08-04T18:30:00Z"</code>) or epoch numbers.</li>
+          <li>Large integers lose precision in JavaScript beyond 2<sup>53</sup>; send IDs as strings when that matters.</li>
+          <li>Object key order is not guaranteed to be meaningful — never rely on it.</li>
+        </ul>
+      </article>
+
+      <article class="panel prose lesson" id="learn-stack">
+        <h2>2. JSON across the stack</h2>
+        <p>JSON is usually the common currency between every layer. A single request typically crosses it several times:</p>
+        <div class="flow">
+          <span class="flow-step">Browser</span>
+          <span class="flow-arrow">→</span>
+          <span class="flow-step">API gateway</span>
+          <span class="flow-arrow">→</span>
+          <span class="flow-step">Service</span>
+          <span class="flow-arrow">→</span>
+          <span class="flow-step">Database</span>
+          <span class="flow-arrow">→</span>
+          <span class="flow-step">Logs / queue</span>
+        </div>
+
+        <h3>Front end</h3>
+        <div class="code-block">
+          <button type="button" class="code-copy" title="Copy snippet">Copy</button>
+          <pre class="code"><code>const res = await fetch('/api/jobs?city=Hyderabad', {
+  headers: { Accept: 'application/json' }
+});
+if (!res.ok) throw new Error(`HTTP ${res.status}`);
+const data = await res.json();   // parsed into JS objects</code></pre>
+        </div>
+
+        <h3>Back end</h3>
+        <p>
+          Frameworks serialize objects to JSON on the way out and deserialize on the way in — Express
+          <code>res.json()</code>, FastAPI/Pydantic models, Spring Jackson, Rails <code>render json:</code>.
+          The important work is the contract, not the serializer.
+        </p>
+
+        <h3>Database</h3>
+        <p>
+          PostgreSQL <code>jsonb</code>, MySQL <code>JSON</code>, MongoDB (BSON) and DynamoDB all store documents
+          natively and let you index inside them. Use it for genuinely variable data; keep the fields you filter and
+          join on as real columns.
+        </p>
+
+        <h3>Embedded in HTML</h3>
+        <p>
+          Server-rendered pages ship data to the client inside the markup — <code>application/ld+json</code> for
+          search engines, <code>application/json</code> for hydration (<code>__NEXT_DATA__</code>). That is precisely
+          what the <a href="#home">Home</a> tool on this site extracts.
+        </p>
+      </article>
+
+      <article class="panel prose lesson" id="learn-realworld">
+        <h2>3. How JSON is developed in real applications</h2>
+
+        <h3>Design the contract first</h3>
+        <p>
+          Teams agree the shape before writing code, usually as an OpenAPI spec or JSON Schema kept in version
+          control. Both client and server then generate types from that single source of truth.
+        </p>
+
+        <h3>Use a response envelope</h3>
+        <div class="code-block">
+          <button type="button" class="code-copy" title="Copy snippet">Copy</button>
+          <pre class="code"><code>{
+  "data": [ { "id": "1", "title": "Functional QA" } ],
+  "meta": { "page": 1, "perPage": 20, "total": 137 },
+  "errors": []
+}</code></pre>
+        </div>
+        <p>A stable wrapper means clients can add pagination or warnings later without a breaking change.</p>
+
+        <h3>Validate at the boundary</h3>
+        <p>
+          Never trust incoming JSON. Validate against a schema on arrival — <code>jsonschema</code> or Pydantic in
+          Python, Zod or Ajv in JavaScript — and reject early with a clear error.
+        </p>
+        <div class="code-block">
+          <button type="button" class="code-copy" title="Copy snippet">Copy</button>
+          <pre class="code"><code>{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["id", "title"],
+  "properties": {
+    "id":     { "type": "string" },
+    "title":  { "type": "string", "minLength": 1 },
+    "remote": { "type": "boolean", "default": false },
+    "skills": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}</code></pre>
+        </div>
+
+        <h3>Conventions that age well</h3>
+        <ul>
+          <li>Pick one casing — <code>camelCase</code> or <code>snake_case</code> — and apply it everywhere.</li>
+          <li>Adding a field is backward compatible; renaming or removing one is not. Version the endpoint instead.</li>
+          <li>Prefer <code>null</code> over omitting a key when "unknown" is meaningful.</li>
+          <li>Return errors as structured objects (<code>code</code>, <code>message</code>, <code>field</code>), not bare strings.</li>
+          <li>Log as JSON lines so logs are queryable rather than grep-able.</li>
+        </ul>
+      </article>
+
+      <article class="panel prose lesson" id="learn-where">
+        <h2>4. Where JSON is mostly used</h2>
+        <div class="use-grid">
+          <div class="use-card"><h4>REST &amp; GraphQL APIs</h4><p>The default request and response format for web and mobile clients.</p></div>
+          <div class="use-card"><h4>Configuration</h4><p><code>package.json</code>, <code>tsconfig.json</code>, cloud IAM policies, CI definitions.</p></div>
+          <div class="use-card"><h4>Structured data / SEO</h4><p>JSON-LD in <code>&lt;script type="application/ld+json"&gt;</code> describing articles, jobs and products.</p></div>
+          <div class="use-card"><h4>Page hydration</h4><p>Server-rendered state handed to the browser as an embedded JSON blob.</p></div>
+          <div class="use-card"><h4>Messaging</h4><p>Kafka, RabbitMQ and webhook payloads between services.</p></div>
+          <div class="use-card"><h4>Document stores</h4><p>MongoDB, PostgreSQL <code>jsonb</code>, Elasticsearch documents.</p></div>
+          <div class="use-card"><h4>Observability</h4><p>Structured logs, traces and metrics shipped as JSON lines.</p></div>
+          <div class="use-card"><h4>Data exchange</h4><p>Exports, ETL hand-offs and ML feature payloads.</p></div>
+        </div>
+        <p class="note">
+          Where JSON is a poor fit: very large tabular datasets (use Parquet), binary content, and ultra
+          low-latency internal RPC (use Protobuf or Avro).
+        </p>
+      </article>
+
+      <article class="panel prose lesson" id="learn-advanced">
+        <h2>5. Advanced formats worth knowing</h2>
+        <table class="doc-table">
+          <thead><tr><th>Format</th><th>What it is</th><th>Used for</th></tr></thead>
+          <tbody>
+            <tr><td>JSON Schema</td><td>A vocabulary for describing and validating JSON</td><td>Contracts, request validation, code generation</td></tr>
+            <tr><td>JSON-LD</td><td>JSON plus a <code>@context</code> that gives keys global meaning</td><td>Search-engine structured data, linked data</td></tr>
+            <tr><td>JSON Lines (<code>.jsonl</code>)</td><td>One JSON object per line</td><td>Logs, streaming, large exports</td></tr>
+            <tr><td>JSON Pointer / JSONPath</td><td>Addressing syntax such as <code>$.company.name</code></td><td>Extracting a field from a deep document</td></tr>
+            <tr><td>NDJSON over SSE</td><td>Newline-delimited JSON streamed over HTTP</td><td>Live feeds, token streaming</td></tr>
+          </tbody>
+        </table>
+        <p>
+          The Key values pane on the <a href="#home">Home</a> page reports each field using JSONPath syntax, so a path
+          you copy there can be fed straight into a JSONPath library.
+        </p>
+      </article>
+
+      <article class="panel prose lesson" id="learn-python">
+        <h2>6. Create and test a JSON fetch in Python</h2>
+        <p>Everything below uses the standard library first, so it runs on a clean Python 3.9+ install.</p>
+
+        <h3>Step 1 — Create JSON from Python objects</h3>
+        <div class="code-block">
+          <button type="button" class="code-copy" title="Copy snippet">Copy</button>
+          <pre class="code"><code>import json
+
+job = {
+    "id": "31840000018316618",
+    "title": "Functional QA",
+    "remote": False,          # becomes false
+    "salary": None,           # becomes null
+    "skills": ["manual testing", "SQL"],
+}
+
+text = json.dumps(job, indent=2, ensure_ascii=False)
+print(text)
+
+with open("job.json", "w", encoding="utf-8") as f:
+    json.dump(job, f, indent=2)</code></pre>
+        </div>
+
+        <h3>Step 2 — Read it back</h3>
+        <div class="code-block">
+          <button type="button" class="code-copy" title="Copy snippet">Copy</button>
+          <pre class="code"><code>with open("job.json", encoding="utf-8") as f:
+    data = json.load(f)
+
+print(data["title"])              # Functional QA
+print(data.get("salary", "n/a"))  # None
+print(len(data["skills"]))        # 2</code></pre>
+        </div>
+
+        <h3>Step 3 — Fetch JSON from an API (standard library)</h3>
+        <div class="code-block">
+          <button type="button" class="code-copy" title="Copy snippet">Copy</button>
+          <pre class="code"><code>import json
+import urllib.request
+import urllib.error
+
+
+def fetch_json(url: str, timeout: int = 10) -> dict:
+    """Fetch a URL and parse the response as JSON."""
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": "learn-json/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            if response.status != 200:
+                raise RuntimeError(f"HTTP {response.status}")
+            charset = response.headers.get_content_charset() or "utf-8"
+            return json.loads(response.read().decode(charset))
+    except urllib.error.HTTPError as err:
+        raise RuntimeError(f"HTTP {err.code} from {url}") from err
+    except json.JSONDecodeError as err:
+        raise ValueError(f"Response was not valid JSON: {err}") from err
+
+
+if __name__ == "__main__":
+    data = fetch_json("https://api.github.com/repos/python/cpython")
+    print(data["full_name"], "-", data["stargazers_count"], "stars")</code></pre>
+        </div>
+
+        <h3>Step 4 — The same thing with <code>requests</code></h3>
+        <div class="code-block">
+          <button type="button" class="code-copy" title="Copy snippet">Copy</button>
+          <pre class="code"><code># pip install requests
+import requests
+
+response = requests.get(
+    "https://api.github.com/repos/python/cpython",
+    headers={"Accept": "application/json"},
+    timeout=10,
+)
+response.raise_for_status()
+data = response.json()
+print(data["full_name"])</code></pre>
+        </div>
+
+        <h3>Step 5 — Pull embedded JSON out of a web page</h3>
+        <p>This is the Python equivalent of what this site's scraper does in static mode:</p>
+        <div class="code-block">
+          <button type="button" class="code-copy" title="Copy snippet">Copy</button>
+          <pre class="code"><code># pip install requests beautifulsoup4
+import json
+import requests
+from bs4 import BeautifulSoup
+
+html = requests.get("https://en.wikipedia.org/wiki/JSON", timeout=10).text
+soup = BeautifulSoup(html, "html.parser")
+
+blocks = []
+for tag in soup.select('script[type="application/ld+json"], script[type="application/json"]'):
+    if not tag.string:
+        continue
+    try:
+        blocks.append(json.loads(tag.string))
+    except json.JSONDecodeError:
+        continue   # some sites emit almost-JSON
+
+for block in blocks:
+    print(block.get("@type"), "-", block.get("datePublished"))</code></pre>
+        </div>
+
+        <h3>Step 6 — Test it</h3>
+        <p>Tests should not hit the network. Stub the fetch and assert on the parsing:</p>
+        <div class="code-block">
+          <button type="button" class="code-copy" title="Copy snippet">Copy</button>
+          <pre class="code"><code># pip install pytest
+# test_fetch_json.py
+import json
+import pytest
+from fetch_json import fetch_json
+
+
+class FakeResponse:
+    def __init__(self, payload, status=200):
+        self._body = json.dumps(payload).encode()
+        self.status = status
+        self.headers = type("H", (), {"get_content_charset": lambda self: "utf-8"})()
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+def test_parses_json(monkeypatch):
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *a, **k: FakeResponse({"title": "Functional QA"}),
+    )
+    assert fetch_json("https://example.com/job")["title"] == "Functional QA"
+
+
+def test_rejects_invalid_json(monkeypatch):
+    bad = FakeResponse({})
+    bad._body = b"{ not json }"
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: bad)
+
+    with pytest.raises(ValueError):
+        fetch_json("https://example.com/job")</code></pre>
+        </div>
+        <div class="code-block">
+          <button type="button" class="code-copy" title="Copy snippet">Copy</button>
+          <pre class="code"><code>pytest -q          # run the tests
+python -m json.tool job.json   # validate any JSON file from the shell</code></pre>
+        </div>
+
+        <h3>Common Python gotchas</h3>
+        <ul>
+          <li><code>json.dumps</code> fails on <code>datetime</code> and <code>Decimal</code> — pass <code>default=str</code> or a custom encoder.</li>
+          <li>Python allows <code>NaN</code> and <code>Infinity</code> by default; use <code>allow_nan=False</code> for interoperable output.</li>
+          <li>Object keys become strings: <code>{1: "a"}</code> round-trips as <code>{"1": "a"}</code>.</li>
+          <li>Always pass a <code>timeout</code> — a hung request otherwise blocks forever.</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="view" id="view-about" hidden>
+      <div class="masthead">
+        <div class="badge">About</div>
+        <h1>About <span class="accent">JSON Scraper</span></h1>
+        <p class="tagline">Why this tool exists and how it works.</p>
+      </div>
+      <div class="panel prose">
+        <h2>What it does</h2>
+        <p>
+          JSON Scraper extracts embedded JSON — <code>application/ld+json</code>, <code>application/json</code>,
+          and JavaScript globals such as <code>__NEXT_DATA__</code> — from any public web page, then lists every
+          distinct field with its XPath so you can copy exactly what you need.
+        </p>
+
+        <h2>Why a server does the fetching</h2>
+        <p>
+          The equivalent DevTools snippet cannot be automated from a web page: the browser's same-origin policy
+          blocks reading another site's HTML. Requests are therefore made server-side, where that restriction does
+          not apply, so target-site CORS never blocks a lookup.
+        </p>
+
+        <h2>Two fetch strategies</h2>
+        <ul>
+          <li><strong>Static</strong> — a plain HTTP fetch, for server-rendered pages.</li>
+          <li><strong>Browser</strong> — Chromium renders the page, then the extraction snippet runs in the page context, for single-page apps.</li>
+          <li><strong>Auto</strong> — static first, falling back to the browser only when nothing was parsed.</li>
+        </ul>
+
+        <h2>Built with</h2>
+        <p>Node.js, Playwright and Cheerio, with no front-end framework.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <a class="dev-link" id="dev-link" href="https://www.linkedin.com/in/akashsinghjsr/" target="_blank" rel="noopener noreferrer">
+        <span class="dev-avatar" aria-hidden="true">in</span>
+        <span>
+          <span class="dev-label">Connect with Developer</span>
+          <span class="dev-sub">Akash Singh · LinkedIn</span>
+        </span>
+      </a>
+
+      <div class="share" id="share">
+        <button type="button" class="share-toggle" id="share-toggle" aria-expanded="false" aria-controls="share-menu">
+          <span class="share-icon" aria-hidden="true">&#8599;</span>
+          <span>Share</span>
+          <span class="share-caret" aria-hidden="true">&#9662;</span>
+        </button>
+        <div class="share-menu" id="share-menu" role="menu" hidden>
+          <a class="share-item" data-share="linkedin" role="menuitem" href="#" target="_blank" rel="noopener noreferrer">
+            <span class="share-badge li" aria-hidden="true">in</span> LinkedIn
+          </a>
+          <a class="share-item" data-share="x" role="menuitem" href="#" target="_blank" rel="noopener noreferrer">
+            <span class="share-badge x" aria-hidden="true">X</span> X
+          </a>
+          <a class="share-item" data-share="whatsapp" role="menuitem" href="#" target="_blank" rel="noopener noreferrer">
+            <span class="share-badge wa" aria-hidden="true">W</span> WhatsApp
+          </a>
+          <button type="button" class="share-item" role="menuitem" id="share-copy">
+            <span class="share-badge cp" aria-hidden="true">&#10697;</span> <span id="share-copy-label">Copy Link</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="site-footer-note">
+      Requests are made server-side, so target-site CORS never blocks a lookup.
+    </div>
+  </footer>
+
+  <script src="/site.js" type="module"></script>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

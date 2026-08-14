@@ -1,0 +1,26 @@
+{
+  "name": "json-scraper",
+  "version": "1.0.0",
+  "description": "Extract embedded JSON (ld+json, application/json and JavaScript globals) from any public web page",
+  "type": "module",
+  "bin": {
+    "json-scraper": "src/cli.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "ui": "node server.js",
+    "cli": "node src/cli.js",
+    "batch": "node src/cli.js --input urls.txt --out out",
+    "test": "node --test test/*.test.js",
+    "install:browser": "playwright install chromium"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.47.0"
+  }
+}
