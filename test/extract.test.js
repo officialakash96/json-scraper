@@ -30,6 +30,33 @@ test('records a parse error instead of throwing', () => {
   assert.ok(blocks[0].error);
 });
 
+test('recovers from literal newlines inside string values (bad control character)', () => {
+  const html = `<script type="application/ld+json">{
+  "@type": "JobPosting",
+  "description": "Line one\nLine two\tend"
+}</script>`;
+  const blocks = extractFromHtml(html);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].parsed, true);
+  assert.equal(blocks[0].data.description, 'Line one\nLine two\tend');
+});
+
+test('recovers from raw HTML (unescaped quotes + newlines) embedded in a string value', () => {
+  const html = `<script type="application/ld+json">{
+  "@type": "JobPosting",
+  "title": "Talent Sourcing Specialist",
+  "description": "
+  Intro text <br><br>Details <h2 id="job_description">Heading</h2> more text
+",
+  "id": "7089"
+}</script>`;
+  const blocks = extractFromHtml(html);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].parsed, true);
+  assert.equal(blocks[0].data.id, '7089');
+  assert.ok(blocks[0].data.description.includes('id="job_description"'));
+});
+
 test('finds nested date fields with JSON paths', () => {
   const dates = extractDates({ a: { b: [{ datePublished: '2024-01-02T03:04:05Z' }] } });
   assert.equal(dates.length, 1);

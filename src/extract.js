@@ -20,19 +20,77 @@ export function sanitize(raw) {
   return text.trim();
 }
 
-function tryParse(text) {
-  try {
-    return { ok: true, value: JSON.parse(text) };
-  } catch (err) {
-    // Some sites emit multiple concatenated objects or trailing garbage.
-    const firstBrace = text.search(/[[{]/);
-    if (firstBrace > 0) {
-      try {
-        return { ok: true, value: JSON.parse(text.slice(firstBrace)) };
-      } catch { /* fall through */ }
+/**
+ * Some CMSes embed raw HTML (job descriptions, etc.) inside a JSON string without
+ * escaping it — literal newlines/tabs ("bad control character") and literal `"`
+ * from HTML attributes both break JSON.parse. Walk the text tracking string/escape
+ * state, escaping control chars and treating a `"` as a literal character (not the
+ * end of the string) unless it's followed by a JSON structural token.
+ */
+function repairBrokenStrings(text) {
+  const ESCAPES = { '\n': '\\n', '\r': '\\r', '\t': '\\t', '\b': '\\b', '\f': '\\f' };
+  let out = '';
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (!inString) {
+      out += ch;
+      if (ch === '"') inString = true;
+      continue;
     }
-    return { ok: false, error: err.message };
+
+    if (escaped) {
+      out += ch;
+      escaped = false;
+    } else if (ch === '\\') {
+      out += ch;
+      escaped = true;
+    } else if (ch === '"') {
+      let j = i + 1;
+      while (j < text.length && /\s/.test(text[j])) j++;
+      const next = text[j];
+      const terminatesString = next === undefined || ',}]:'.includes(next);
+      if (terminatesString) {
+        inString = false;
+        out += ch;
+      } else {
+        out += '\\"';
+      }
+    } else if (ch.charCodeAt(0) < 0x20) {
+      out += ESCAPES[ch] ?? `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`;
+    } else {
+      out += ch;
+    }
   }
+  return out;
+}
+
+/** Tries JSON.parse, then a couple of best-effort repairs for malformed-but-common real-world output. */
+export function tryParse(text) {
+  const candidates = [text];
+  // Some sites emit multiple concatenated objects or trailing garbage.
+  const firstBrace = text.search(/[[{]/);
+  if (firstBrace > 0) candidates.push(text.slice(firstBrace));
+
+  let firstError = null;
+  for (const candidate of candidates) {
+    try {
+      return { ok: true, value: JSON.parse(candidate) };
+    } catch (err) {
+      firstError ??= err;
+    }
+  }
+
+  for (const candidate of candidates) {
+    try {
+      return { ok: true, value: JSON.parse(repairBrokenStrings(candidate)) };
+    } catch { /* fall through */ }
+  }
+
+  return { ok: false, error: firstError.message };
 }
 
 /**

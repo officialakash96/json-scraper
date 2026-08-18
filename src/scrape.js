@@ -6,18 +6,18 @@ import {
   extractDates,
   extractMetaDates,
   pickPrimaryDate,
-  sanitize
+  sanitize,
+  tryParse
 } from './extract.js';
 
 function blocksFromConsole(consoleBlocks = []) {
   return consoleBlocks.map((b) => {
     const text = sanitize(b.text);
     const base = { ...b, label: `${b.selector}[${b.index}]`, source: 'script-tag', bytes: text.length, text: undefined };
-    try {
-      return { ...base, parsed: true, data: JSON.parse(text), error: null, raw: null };
-    } catch (err) {
-      return { ...base, parsed: false, data: null, error: err.message, raw: text.slice(0, 500) };
-    }
+    const parsed = tryParse(text);
+    return parsed.ok
+      ? { ...base, parsed: true, data: parsed.value, error: null, raw: null }
+      : { ...base, parsed: false, data: null, error: parsed.error, raw: text.slice(0, 500) };
   });
 }
 
@@ -40,11 +40,10 @@ function blocksFromGlobals(globals = [], existing = []) {
         type: 'js-global',
         bytes: g.text.length
       };
-      try {
-        return { ...base, parsed: true, data: JSON.parse(g.text), error: null, raw: null };
-      } catch (err) {
-        return { ...base, parsed: false, data: null, error: err.message, raw: g.text.slice(0, 500) };
-      }
+      const parsed = tryParse(g.text);
+      return parsed.ok
+        ? { ...base, parsed: true, data: parsed.value, error: null, raw: null }
+        : { ...base, parsed: false, data: null, error: parsed.error, raw: g.text.slice(0, 500) };
     });
 }
 
