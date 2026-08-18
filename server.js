@@ -2,10 +2,15 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import zlib from 'node:zlib';
+import { promisify } from 'node:util';
 import { scrape } from './src/scrape.js';
 import { closeBrowser } from './src/fetchDynamic.js';
 import { cacheStats, cacheClear } from './src/cache.js';
 import { config } from './src/config.js';
+
+const gzip = promisify(zlib.gzip);
+const brotli = promisify(zlib.brotliCompress);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -18,6 +23,41 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.json': 'application/json; charset=utf-8'
 };
+
+// Only worth the CPU cost for compressible/text-ish payloads above a small size.
+const COMPRESSIBLE = /^(text\/|application\/(json|javascript))/;
+const MIN_COMPRESS_BYTES = 1024;
+
+function pickEncoding(req) {
+  const accept = req.headers['accept-encoding'] || '';
+  if (/\bbr\b/.test(accept)) return 'br';
+  if (/\bgzip\b/.test(accept)) return 'gzip';
+  return null;
+}
+
+/** Compresses `body` when the client supports it and it's worth the CPU; writes headers + ends the response. */
+async function sendCompressed(req, res, status, headers, body) {
+  const buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
+  const contentType = headers['Content-Type'] || '';
+  const encoding = COMPRESSIBLE.test(contentType) && buf.length >= MIN_COMPRESS_BYTES ? pickEncoding(req) : null;
+
+  res.setHeader('Vary', 'Accept-Encoding');
+  if (!encoding) {
+    res.writeHead(status, { ...headers, 'Content-Length': buf.length });
+    res.end(buf);
+    return;
+  }
+
+  try {
+    const compressed = encoding === 'br' ? await brotli(buf) : await gzip(buf);
+    res.writeHead(status, { ...headers, 'Content-Encoding': encoding, 'Content-Length': compressed.length });
+    res.end(compressed);
+  } catch {
+    // Compression failure shouldn't fail the request — fall back to the uncompressed body.
+    res.writeHead(status, { ...headers, 'Content-Length': buf.length });
+    res.end(buf);
+  }
+}
 
 /* --------------------------- CORS --------------------------- */
 // The browser never talks to the target site, so target-site CORS can't apply.
@@ -60,12 +100,11 @@ function rateLimited(ip) {
 }
 
 /* --------------------------- helpers --------------------------- */
-function sendJson(req, res, status, payload) {
+async function sendJson(req, res, status, payload) {
   const body = JSON.stringify(payload);
   applyCors(req, res);
   securityHeaders(res);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) });
-  res.end(body);
+  await sendCompressed(req, res, status, { 'Content-Type': 'application/json; charset=utf-8' }, body);
 }
 
 async function readBody(req, limit) {
@@ -92,13 +131,29 @@ async function serveStatic(req, res) {
     return;
   }
   try {
-    const data = await fs.readFile(filePath);
+    const stat = await fs.stat(filePath);
+    // Cheap freshness check: size+mtime is enough to detect a changed deploy.
+    const etag = `"${stat.size}-${Math.trunc(stat.mtimeMs)}"`;
+    const isHtml = path.extname(filePath) === '.html';
+    const cacheControl = isHtml ? 'no-cache' : 'public, max-age=600, must-revalidate';
+
     securityHeaders(res);
-    res.writeHead(200, {
-      'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream',
-      'Cache-Control': 'no-cache'
-    });
-    res.end(data);
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', cacheControl);
+
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304).end();
+      return;
+    }
+
+    const data = await fs.readFile(filePath);
+    await sendCompressed(
+      req,
+      res,
+      200,
+      { 'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream', ETag: etag, 'Cache-Control': cacheControl },
+      data
+    );
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found');
   }

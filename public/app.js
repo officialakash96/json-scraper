@@ -97,6 +97,22 @@ function groupFields(leaves) {
 /* Values are held here so copy buttons reference an index instead of
    embedding untrusted content in data attributes. */
 let fieldSets = [];
+let blocksCache = [];
+let renderedFieldPanes = new Set();
+
+/** Field panes can be expensive to compute for huge blocks, so they're built lazily on first expand. */
+function fieldPanePlaceholder(blockIndex) {
+  return `<aside class="kv-pane kv-pane-slot" data-block-slot="${blockIndex}"><div class="kv-empty">Loading fields…</div></aside>`;
+}
+
+function ensureFieldPane(blockIndex, container) {
+  if (renderedFieldPanes.has(blockIndex)) return;
+  const block = blocksCache[blockIndex];
+  const slot = container.querySelector(`.kv-pane-slot[data-block-slot="${blockIndex}"]`);
+  if (!block || !slot) return;
+  slot.outerHTML = renderFieldPane(block, blockIndex);
+  renderedFieldPanes.add(blockIndex);
+}
 
 function renderFieldPane(block, blockIndex) {
   if (!block.parsed) return '<aside class="kv-pane"><div class="kv-empty">Block could not be parsed.</div></aside>';
@@ -142,6 +158,8 @@ function renderBlocks(data) {
   const blocks = data.blocks ?? [];
   document.getElementById('blocks-count').textContent = blocks.length;
   fieldSets = [];
+  blocksCache = blocks;
+  renderedFieldPanes = new Set();
 
   if (!blocks.length) {
     panel.innerHTML = '<div class="empty">No embedded JSON script tags were found. Try Browser mode.</div>';
@@ -154,7 +172,7 @@ function renderBlocks(data) {
       const code = b.error
         ? `<pre class="code">${esc(b.error)}\n\n${esc(body)}</pre>`
         : `<pre class="code">${highlight(body)}</pre>`;
-      return `<details class="block"${i === 0 ? ' open' : ''}>
+      return `<details class="block" data-index="${i}"${i === 0 ? ' open' : ''}>
         <summary>
           <span>${esc(b.label ?? b.selector)}</span>
           ${b.source === 'js-global' ? '<span class="pill">JS global</span>' : ''}
@@ -162,10 +180,13 @@ function renderBlocks(data) {
           <span class="pill">${esc(b.bytes)} B</span>
           <span class="pill ${b.parsed ? 'ok' : 'fail'}">${b.parsed ? 'parsed' : 'parse error'}</span>
         </summary>
-        <div class="block-body">${code}${renderFieldPane(b, i)}</div>
+        <div class="block-body">${code}${fieldPanePlaceholder(i)}</div>
       </details>`;
     })
     .join('');
+
+  // The first block starts expanded, so its pane needs building right away; the rest build on toggle.
+  ensureFieldPane(0, panel);
 }
 
 async function copyText(text, button, label) {
@@ -198,13 +219,28 @@ document.getElementById('panel-blocks').addEventListener('click', (event) => {
   }
 });
 
-document.getElementById('panel-blocks').addEventListener('input', (event) => {
-  const filter = event.target.closest('.kv-filter');
-  if (!filter) return;
+document.getElementById('panel-blocks').addEventListener(
+  'toggle',
+  (event) => {
+    const details = event.target.closest('details.block');
+    if (!details || !details.open) return;
+    ensureFieldPane(Number(details.dataset.index), document.getElementById('panel-blocks'));
+  },
+  true // the toggle event doesn't bubble, so this must run in the capture phase
+);
+
+const filterTimers = new WeakMap();
+function applyFilter(filter) {
   const term = filter.value.trim().toLowerCase();
   filter.parentElement.querySelectorAll('.kv-row').forEach((row) => {
     row.hidden = term !== '' && !row.dataset.key.includes(term) && !row.dataset.path.includes(term);
   });
+}
+document.getElementById('panel-blocks').addEventListener('input', (event) => {
+  const filter = event.target.closest('.kv-filter');
+  if (!filter) return;
+  clearTimeout(filterTimers.get(filter));
+  filterTimers.set(filter, setTimeout(() => applyFilter(filter), 120));
 });
 
 function render(data) {
@@ -223,16 +259,25 @@ function render(data) {
 }
 
 async function run(url) {
+  const mode = modeSelect.value;
   setStatus(`Fetching ${url} …`, 'info');
   results.hidden = true;
   submitBtn.disabled = true;
   submitBtn.classList.add('is-loading');
 
+  // Browser-mode fallback can take several seconds; let the user know why the wait is longer than usual.
+  const stageTimer =
+    mode !== 'static'
+      ? setTimeout(() => {
+          setStatus(`Still working on ${url} — rendering with a headless browser, this can take a bit longer…`, 'info');
+        }, 4000)
+      : null;
+
   try {
     const res = await fetch('/api/scrape', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, mode: modeSelect.value, waitMs: Number(waitInput.value) || 0 })
+      body: JSON.stringify({ url, mode, waitMs: Number(waitInput.value) || 0 })
     });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || `Request failed (${res.status})`);
@@ -248,6 +293,7 @@ async function run(url) {
   } catch (err) {
     setStatus(err.message, 'error');
   } finally {
+    clearTimeout(stageTimer);
     submitBtn.disabled = false;
     submitBtn.classList.remove('is-loading');
   }
